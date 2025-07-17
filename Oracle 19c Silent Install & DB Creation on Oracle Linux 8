@@ -1,0 +1,625 @@
+#Oracle 19c Silent Install & DB Creation on Oracle Linux 8
+
+In this guide, you’ll learn how to perform a fully silent Oracle 19c installation and create a database on Oracle Linux 8, step-by-step. We cover pre-setup, download, silent install, and post checks to get your lab or project environment ready quickly and cleanly.
+
+1️⃣ Pre-Installation Preparation (Prestuff)
+
+# ---------------------------------------------------------
+# Oracle 19c FULL SILENT INSTALLATION ON ORACLE LINUX 8.10
+# Pre-Installation Preparation
+# ---------------------------------------------------------
+
+# Check OS
+uname -a
+cat /etc/os-release
+
+# Check RAM & Swap
+grep MemTotal /proc/meminfo
+grep SwapTotal /proc/meminfo
+
+# Adjust Swap to 4GB
+sudo swapoff -a
+sudo cp /etc/fstab /etc/fstab.bak
+sudo sed -i '/swap/d' /etc/fstab
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile swap swap defaults 0 0' | sudo tee -a /etc/fstab
+swapon --show
+grep SwapTotal /proc/meminfo
+
+# Check CPU & Disk
+lscpu
+df -h
+
+# Install prerequisites
+yum install -y oracle-database-preinstall-19c
+
+# Verify kernel parameters
+sudo sysctl -p
+
+# Verify shell limits
+ulimit -a
+
+# Create groups, user, and set password
+getent group oinstall
+getent group dba
+id oracle
+passwd oracle
+
+# Create required directories
+sudo mkdir -p /u01/app/oracle/product/19.0.0/dbhome_1
+sudo mkdir -p /u01/app/oraInventory
+sudo mkdir -p /u02/oradata
+sudo mkdir -p /u02/fra
+sudo mkdir -p /u03/oracle/export
+
+# Set ownership and permissions
+sudo chown -R oracle:oinstall /u01 /u02 /u03
+sudo chmod -R 775 /u01 /u02 /u03
+
+# Verify directories, permissions, ownership
+ls -ld /u01/app/oracle
+ls -ld /u01/app/oracle/product/19.0.0/dbhome_1
+ls -ld /u01/app/oraInventory
+ls -ld /u02/oradata
+ls -ld /u02/fra
+ls -ld /u03/oracle/export
+find /u01 /u02 /u03 -type d -exec ls -ld {} \;
+
+# Set Oracle environment for oracle user
+sudo su - oracle
+vi ~/.bash_profile
+
+# Add:
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=$ORACLE_BASE/product/19.0.0/dbhome_1
+export ORACLE_INVENTORY=/u01/app/oraInventory
+export ORACLE_SID=ORCL
+export PATH=$PATH:$ORACLE_HOME/bin
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib
+export CLASSPATH=$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib
+
+source ~/.bash_profile
+
+# Copy or download Oracle installation zip:
+# Copy:
+cp /mnt/software/LINUX.X64_193000_db_home.zip $ORACLE_HOME
+# OR download:
+wget --no-check-certificate --content-disposition "https://download.oracle.com/otn/linux/oracle19c/190000/LINUX.X64_193000_db_home.zip?AuthParam=xxxx"
+
+# Unzip the installer:
+cd $ORACLE_HOME
+unzip LINUX.X64_193000_db_home.zip
+
+2️⃣ Download, Installation & DB Creation
+
+# ---------------------------------------------------------
+# Oracle 19c Silent Installation & Database Creation
+# ---------------------------------------------------------
+
+# Prepare db_install.rsp response file:
+cd $ORACLE_HOME/install/response
+cp db_install.rsp db_install.rsp_backup
+vi db_install.rsp
+# Edit your required parameters.
+
+# Run prerequisites:
+cd $ORACLE_HOME
+export CV_ASSUME_DISTID=OEL7.6
+./runInstaller -executePrereqs -silent -responseFile $ORACLE_HOME/install/response/db_install.rsp
+
+# Run silent installation:
+./runInstaller -silent -responseFile $ORACLE_HOME/install/response/db_install.rsp
+
+# As root, execute post-install scripts:
+sudo /u01/app/oraInventory/orainstRoot.sh
+sudo /u01/app/oracle/product/19.0.0/dbhome_1/root.sh
+
+# Verify SQL*Plus installation
+sqlplus -v
+
+# Create database using DBCA in silent mode:
+mkdir -p /home/oracle/scripts
+cd /home/oracle/scripts
+vi create_db.sh
+
+# Add the following:
+#!/bin/bash
+dbca -silent -createDatabase \
+-templateName General_Purpose.dbc \
+-gdbname ORCL \
+-sid ORCL \
+-dbUniqueName ORCL_LAB \
+-responseFile NO_VALUE \
+-characterSet AL32UTF8 \
+-createAsContainerDatabase true \
+-numberOfPDBs 1 \
+-pdbName PDB1 \
+-pdbAdminPassword 'Your_Password' \
+-createListener LISTENER,port=1521 \
+-emConfiguration NONE \
+-sysPassword 'Your_Password' \
+-systemPassword 'Your_Password' \
+-dbsnmpPassword 'Your_Password' \
+-datafileDestination /u02/oradata \
+-recoveryAreaDestination /u02/fra \
+-recoveryAreaSize 2048 \
+-redoLogFileSize 50 \
+-storageType FS \
+-memoryPercentage 30 \
+-ignorePreReqs
+
+# Save and run:
+chmod +x create_db.sh
+./create_db.sh
+
+# Check DBCA logs:
+ls /u01/app/oracle/cfgtoollogs/dbca/ORCL_LAB
+
+# Optional: Configure autostart
+sudo vi /etc/oratab
+# Add:
+ORCL:/u01/app/oracle/product/19.0.0/dbhome_1:Y
+
+# To manually start/stop:
+dbstart $ORACLE_HOME
+dbshut $ORACLE_HOME
+
+Refer Ready Response File (db_install.rsp) for Silent Install (Configure as Needed)
+
+####################################################################
+## Copyright(c) Oracle Corporation 1998,2019. All rights reserved.##
+##                                                                ##
+## Specify values for the variables listed below to customize     ##
+## your installation.                                             ##
+##                                                                ##
+## Each variable is associated with a comment. The comment        ##
+## can help to populate the variables with the appropriate        ##
+## values.                                                        ##
+##                                                                ##
+## IMPORTANT NOTE: This file contains plain text passwords and    ##
+## should be secured to have read permission only by oracle user  ##
+## or db administrator who owns this installation.                ##
+##                                                                ##
+####################################################################
+
+#------------------------------------------------------------------------------
+# Do not change the following system generated value.
+#------------------------------------------------------------------------------
+oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v19.0.0
+
+#-------------------------------------------------------------------------------
+# Specify the installation option.
+# It can be one of the following:
+#   - INSTALL_DB_SWONLY
+#   - INSTALL_DB_AND_CONFIG
+#-------------------------------------------------------------------------------
+oracle.install.option=INSTALL_DB_SWONLY
+
+#-------------------------------------------------------------------------------
+# Specify the Unix group to be set for the inventory directory.
+#-------------------------------------------------------------------------------
+UNIX_GROUP_NAME=oinstall
+
+#-------------------------------------------------------------------------------
+# Specify the location which holds the inventory files.
+# This is an optional parameter if installing on
+# Windows based Operating System.
+#-------------------------------------------------------------------------------
+INVENTORY_LOCATION=/u01/app/oraInventory
+#-------------------------------------------------------------------------------
+# Specify the complete path of the Oracle Home.
+#-------------------------------------------------------------------------------
+ORACLE_HOME=/u01/app/oracle/product/19.0.0/dbhome_1
+
+#-------------------------------------------------------------------------------
+# Specify the complete path of the Oracle Base.
+#-------------------------------------------------------------------------------
+ORACLE_BASE=/u01/app/oracle
+
+#-------------------------------------------------------------------------------
+# Specify the installation edition of the component.
+#
+# The value should contain only one of these choices.
+#   - EE     : Enterprise Edition
+#   - SE2    : Standard Edition 2
+
+#-------------------------------------------------------------------------------
+
+oracle.install.db.InstallEdition=EE
+###############################################################################
+#                                                                             #
+# PRIVILEGED OPERATING SYSTEM GROUPS                                          #
+# ------------------------------------------                                  #
+# Provide values for the OS groups to which SYSDBA and SYSOPER privileges     #
+# needs to be granted. If the install is being performed as a member of the   #
+# group "dba", then that will be used unless specified otherwise below.       #
+#                                                                             #
+# The value to be specified for OSDBA and OSOPER group is only for UNIX based #
+# Operating System.                                                           #
+#                                                                             #
+###############################################################################
+
+#------------------------------------------------------------------------------
+# The OSDBA_GROUP is the OS group which is to be granted SYSDBA privileges.
+#-------------------------------------------------------------------------------
+oracle.install.db.OSDBA_GROUP=oinstall
+
+#------------------------------------------------------------------------------
+# The OSOPER_GROUP is the OS group which is to be granted SYSOPER privileges.
+# The value to be specified for OSOPER group is optional.
+#------------------------------------------------------------------------------
+oracle.install.db.OSOPER_GROUP=oinstall
+
+#------------------------------------------------------------------------------
+# The OSBACKUPDBA_GROUP is the OS group which is to be granted SYSBACKUP privileges.
+#------------------------------------------------------------------------------
+oracle.install.db.OSBACKUPDBA_GROUP=oinstall
+
+#------------------------------------------------------------------------------
+# The OSDGDBA_GROUP is the OS group which is to be granted SYSDG privileges.
+#------------------------------------------------------------------------------
+oracle.install.db.OSDGDBA_GROUP=oinstall
+
+#------------------------------------------------------------------------------
+# The OSKMDBA_GROUP is the OS group which is to be granted SYSKM privileges.
+#------------------------------------------------------------------------------
+oracle.install.db.OSKMDBA_GROUP=oinstall
+
+#------------------------------------------------------------------------------
+# The OSRACDBA_GROUP is the OS group which is to be granted SYSRAC privileges.
+#------------------------------------------------------------------------------
+oracle.install.db.OSRACDBA_GROUP=oinstall
+################################################################################
+#                                                                              #
+#                      Root script execution configuration                     #
+#                                                                              #
+################################################################################
+
+#-------------------------------------------------------------------------------------------------------
+# Specify the root script execution mode.
+#
+#   - true  : To execute the root script automatically by using the appropriate configuration methods.
+#   - false : To execute the root script manually.
+#
+# If this option is selected, password should be specified on the console.
+#-------------------------------------------------------------------------------------------------------
+oracle.install.db.rootconfig.executeRootScript=false
+
+#--------------------------------------------------------------------------------------
+# Specify the configuration method to be used for automatic root script execution.
+#
+# Following are the possible choices:
+#   - ROOT
+#   - SUDO
+#--------------------------------------------------------------------------------------
+oracle.install.db.rootconfig.configMethod=
+#--------------------------------------------------------------------------------------
+# Specify the absolute path of the sudo program.
+#
+# Applicable only when SUDO configuration method was chosen.
+#--------------------------------------------------------------------------------------
+oracle.install.db.rootconfig.sudoPath=
+
+#--------------------------------------------------------------------------------------
+# Specify the name of the user who is in the sudoers list.
+# Applicable only when SUDO configuration method was chosen.
+# Note:For Single Instance database installations,the sudo user name must be the username of the user installing the database.
+#--------------------------------------------------------------------------------------
+oracle.install.db.rootconfig.sudoUserName=
+
+###############################################################################
+#                                                                             #
+#                               Grid Options                                  #
+#                                                                             #
+###############################################################################
+
+#------------------------------------------------------------------------------
+# Value is required only if the specified install option is INSTALL_DB_SWONLY
+#
+# Specify the cluster node names selected during the installation.
+#
+# Example : oracle.install.db.CLUSTER_NODES=node1,node2
+#------------------------------------------------------------------------------
+oracle.install.db.CLUSTER_NODES=
+
+###############################################################################
+#                                                                             #
+#                        Database Configuration Options                       #
+#                                                                             #
+###############################################################################
+
+#-------------------------------------------------------------------------------
+# Specify the type of database to create.
+# It can be one of the following:
+#   - GENERAL_PURPOSE
+#   - DATA_WAREHOUSE
+# GENERAL_PURPOSE: A starter database designed for general purpose use or transaction-heavy applications.
+# DATA_WAREHOUSE : A starter database optimized for data warehousing applications.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.type=
+
+#-------------------------------------------------------------------------------
+# Specify the Starter Database Global Database Name.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.globalDBName=
+
+#-------------------------------------------------------------------------------
+# Specify the Starter Database SID.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.SID=
+
+#-------------------------------------------------------------------------------
+# Specify whether the database should be configured as a Container database.
+# The value can be either "true" or "false". If left blank it will be assumed
+# to be "false".
+#-------------------------------------------------------------------------------
+oracle.install.db.ConfigureAsContainerDB=
+
+#-------------------------------------------------------------------------------
+# Specify the  Pluggable Database name for the pluggable database in Container Database.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.PDBName=
+
+#-------------------------------------------------------------------------------
+# Specify the Starter Database character set.
+#
+#  One of the following
+#  AL32UTF8, WE8ISO8859P15, WE8MSWIN1252, EE8ISO8859P2,
+#  EE8MSWIN1250, NE8ISO8859P10, NEE8ISO8859P4, BLT8MSWIN1257,
+#  BLT8ISO8859P13, CL8ISO8859P5, CL8MSWIN1251, AR8ISO8859P6,
+#  AR8MSWIN1256, EL8ISO8859P7, EL8MSWIN1253, IW8ISO8859P8,
+#  IW8MSWIN1255, JA16EUC, JA16EUCTILDE, JA16SJIS, JA16SJISTILDE,
+#  KO16MSWIN949, ZHS16GBK, TH8TISASCII, ZHT32EUC, ZHT16MSWIN950,
+#  ZHT16HKSCS, WE8ISO8859P9, TR8MSWIN1254, VN8MSWIN1258
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.characterSet=
+
+#------------------------------------------------------------------------------
+# This variable should be set to true if Automatic Memory Management
+# in Database is desired.
+# If Automatic Memory Management is not desired, and memory allocation
+# is to be done manually, then set it to false.
+#------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.memoryOption=
+
+#-------------------------------------------------------------------------------
+# Specify the total memory allocation for the database. Value(in MB) should be
+# at least 256 MB, and should not exceed the total physical memory available
+# on the system.
+# Example: oracle.install.db.config.starterdb.memoryLimit=512
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.memoryLimit=
+
+#-------------------------------------------------------------------------------
+# This variable controls whether to load Example Schemas onto
+# the starter database or not.
+# The value can be either "true" or "false". If left blank it will be assumed
+# to be "false".
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.installExampleSchemas=
+
+###############################################################################
+#                                                                             #
+# Passwords can be supplied for the following four schemas in the             #
+# starter database:                                                           #
+#   SYS                                                                       #
+#   SYSTEM                                                                    #
+#   DBSNMP (used by Enterprise Manager)                                       #
+#                                                                             #
+# Same password can be used for all accounts (not recommended)                #
+# or different passwords for each account can be provided (recommended)       #
+#                                                                             #
+###############################################################################
+
+#------------------------------------------------------------------------------
+# This variable holds the password that is to be used for all schemas in the
+# starter database.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.password.ALL=
+
+#-------------------------------------------------------------------------------
+# Specify the SYS password for the starter database.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.password.SYS=
+
+#-------------------------------------------------------------------------------
+# Specify the SYSTEM password for the starter database.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.password.SYSTEM=
+
+#-------------------------------------------------------------------------------
+# Specify the DBSNMP password for the starter database.
+# Applicable only when oracle.install.db.config.starterdb.managementOption=CLOUD_CONTROL
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.password.DBSNMP=
+
+#-------------------------------------------------------------------------------
+# Specify the PDBADMIN password required for creation of Pluggable Database in the Container Database.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.password.PDBADMIN=
+
+#-------------------------------------------------------------------------------
+# Specify the management option to use for managing the database.
+# Options are:
+# 1. CLOUD_CONTROL - If you want to manage your database with Enterprise Manager Cloud Control along with Database Express.
+# 2. DEFAULT   -If you want to manage your database using the default Database Express option.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.managementOption=
+
+#-------------------------------------------------------------------------------
+# Specify the OMS host to connect to Cloud Control.
+# Applicable only when oracle.install.db.config.starterdb.managementOption=CLOUD_CONTROL
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.omsHost=
+
+#-------------------------------------------------------------------------------
+# Specify the OMS port to connect to Cloud Control.
+# Applicable only when oracle.install.db.config.starterdb.managementOption=CLOUD_CONTROL
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.omsPort=
+
+#-------------------------------------------------------------------------------
+# Specify the EM Admin user name to use to connect to Cloud Control.
+# Applicable only when oracle.install.db.config.starterdb.managementOption=CLOUD_CONTROL
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.emAdminUser=
+
+#-------------------------------------------------------------------------------
+# Specify the EM Admin password to use to connect to Cloud Control.
+# Applicable only when oracle.install.db.config.starterdb.managementOption=CLOUD_CONTROL
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.emAdminPassword=
+
+###############################################################################
+#                                                                             #
+# SPECIFY RECOVERY OPTIONS                                                    #
+# ------------------------------------                                        #
+# Recovery options for the database can be mentioned using the entries below  #
+#                                                                             #
+###############################################################################
+
+#------------------------------------------------------------------------------
+# This variable is to be set to false if database recovery is not required. Else
+# this can be set to true.
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.enableRecovery=
+
+#-------------------------------------------------------------------------------
+# Specify the type of storage to use for the database.
+# It can be one of the following:
+#   - FILE_SYSTEM_STORAGE
+#   - ASM_STORAGE
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.storageType=
+
+#-------------------------------------------------------------------------------
+# Specify the database file location which is a directory for datafiles, control
+# files, redo logs.
+#
+# Applicable only when oracle.install.db.config.starterdb.storage=FILE_SYSTEM_STORAGE
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.fileSystemStorage.dataLocation=
+
+#-------------------------------------------------------------------------------
+# Specify the recovery location.
+#
+# Applicable only when oracle.install.db.config.starterdb.storage=FILE_SYSTEM_STORAGE
+#-------------------------------------------------------------------------------
+oracle.install.db.config.starterdb.fileSystemStorage.recoveryLocation=
+
+#-------------------------------------------------------------------------------
+# Specify the existing ASM disk groups to be used for storage.
+#
+# Applicable only when oracle.install.db.config.starterdb.storageType=ASM_STORAGE
+#-------------------------------------------------------------------------------
+oracle.install.db.config.asm.diskGroup=
+
+#-------------------------------------------------------------------------------
+# Specify the password for ASMSNMP user of the ASM instance.
+#
+# Applicable only when oracle.install.db.config.starterdb.storage=ASM_STORAGE
+#-------------------------------------------------------------------------------
+oracle.install.db.config.asm.ASMSNMPPassword=
+
+3️⃣ Post-Installation Verification Checklist
+
+# ---------------------------------------------------------
+# Oracle 19c Post-Installation Verification Checklist
+# ---------------------------------------------------------
+
+# Verify environment:
+echo $ORACLE_HOME
+echo $ORACLE_SID
+echo $ORACLE_BASE
+source ~/.bash_profile
+
+# Check listener:
+lsnrctl status
+# If not running:
+lsnrctl start
+
+# Create listener.ora if needed:
+vi $ORACLE_HOME/network/admin/listener.ora
+LISTENER =
+  (DESCRIPTION_LIST =
+    (DESCRIPTION =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = vbox)(PORT = 1521))
+      (ADDRESS = (PROTOCOL = IPC)(KEY = EXTPROC1521))
+    )
+  )
+DEDICATED_THROUGH_BROKER_LISTENER = ON
+DIAG_ADR_ENABLED = ON
+SID_LIST_LISTENER =
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = ORCL)
+      (ORACLE_HOME = /u01/app/oracle/product/19.0.0/dbhome_1)
+      (SID_NAME = ORCL)
+    )
+  )
+
+# Reload:
+lsnrctl reload
+lsnrctl status
+
+# Verify tnsnames.ora:
+vi $ORACLE_HOME/network/admin/tnsnames.ora
+ORCL =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = vbox)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVICE_NAME = ORCL)
+    )
+  )
+PDB1 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = vbox)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVICE_NAME = pdb1)
+    )
+  )
+
+# Connect to SQL*Plus:
+sqlplus / as sysdba
+
+# Check database status:
+set lines 200 pages 200
+col name for a10
+col db_unique_name for a15
+col open_mode for a15
+col log_mode for a15
+col logins for a8
+col instance_name for a15
+col host_name for a15
+alter session set nls_date_format='DD/MM/YYYY HH24:MI:SS';
+select name,db_unique_name,created,open_mode,log_mode,logins,instance_name,database_role,host_name,startup_time from v$instance,v$database;
+
+# Check PDBs:
+SHOW CON_NAME;
+SELECT NAME, OPEN_MODE FROM V$PDBS;
+ALTER PLUGGABLE DATABASE ALL OPEN;
+SHOW PDBS;
+
+# If needed:
+ALTER SESSION SET CONTAINER=PDB1;
+
+# Check datafiles:
+SELECT NAME FROM V$DATAFILE;
+
+# Check FRA:
+SELECT SPACE_LIMIT/1024/1024/1024 AS GB_LIMIT, SPACE_USED/1024/1024/1024 AS GB_USED FROM V$RECOVERY_FILE_DEST;
+
+# Verify connectivity:
+sqlplus sys/Kallu2025#\$@localhost:1521/ORCL_LAB as sysdba
+
+# Optional: Create additional PDBs
+CREATE PLUGGABLE DATABASE CUSTDB1 
+  ADMIN USER pdbadmin IDENTIFIED BY StrongPass123
+  FILE_NAME_CONVERT=('/u02/oradata/ORCL/pdbseed','/u02/oradata/ORCL/CUSTDB1');
+ALTER PLUGGABLE DATABASE CUSTDB1 OPEN;
+ALTER PLUGGABLE DATABASE CUSTDB1 SAVE STATE;
+
+# ✅ Oracle 19c Fully Installed, Verified, and Ready for W3Buddy Labs
