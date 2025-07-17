@@ -1,1 +1,150 @@
-This practical note guides you through installing Oracle 19c on Amazon Linux 2 using the GUI installer, covering pre-installation preparation, downloading, installation, and post-installation checks for a clean, production-ready lab or practice environment.
+# Install Oracle 19c on Amazon Linux 2 (GUI-Based)
+
+A **clean, practical, production-tested guide** for installing Oracle 19c on **Amazon Linux 2 using GUI-based installer**.
+
+## 1️⃣ Pre-Installation Preparation (Prestuff)
+
+✅ Check Kernel Version
+uname -a
+
+✅ Install Required Packages
+sudo yum install -y binutils compat-libcap1 compat-libstdc++-33 \
+gcc gcc-c++ glibc glibc-devel ksh libaio libaio-devel \
+libX11 libXau libXi libXtst libXrender libXrender-devel \
+libgcc libstdc++ libstdc++-devel libxcb make smartmontools \
+sysstat
+
+✅ Configure Kernel Parameters
+vi /etc/sysctl.conf
+(Add below:)
+fs.file-max = 6815744
+kernel.sem = 250 32000 100 128
+kernel.shmmni = 4096
+kernel.shmall = 1073741824
+kernel.shmmax = 4398046511104
+net.ipv4.ip_local_port_range = 9000 65500
+net.core.rmem_default = 262144
+net.core.rmem_max = 4194304
+net.core.wmem_default = 262144
+net.core.wmem_max = 1048576
+
+Apply:
+sudo sysctl -p
+sysctl -a | grep oracle
+
+✅ Disable SELinux
+setenforce 0
+sed -i 's/^SELINUX=enforcing/SELINUX=permissive/g' /etc/selinux/config
+getenforce
+
+✅ Set Resource Limits
+echo "oracle   soft   nofile   1024" >> /etc/security/limits.d/oracle.conf
+echo "oracle   hard   nofile   65536" >> /etc/security/limits.d/oracle.conf
+echo "oracle   soft   nproc    16384" >> /etc/security/limits.d/oracle.conf
+echo "oracle   hard   nproc    16384" >> /etc/security/limits.d/oracle.conf
+echo "oracle   soft   stack    10240" >> /etc/security/limits.d/oracle.conf
+echo "oracle   hard   stack    32768" >> /etc/security/limits.d/oracle.conf
+echo "oracle   hard   memlock  134217728" >> /etc/security/limits.d/oracle.conf
+echo "oracle   soft   memlock  134217728" >> /etc/security/limits.d/oracle.conf
+
+✅ Disable Swap
+swapoff -a
+sed -i '/swap/d' /etc/fstab
+
+✅ Disable Firewall
+systemctl stop firewalld
+systemctl disable firewalld
+
+✅ Create Oracle User and Groups
+groupadd -g 54321 oinstall
+groupadd -g 54322 dba
+groupadd -g 54323 oper
+useradd -u 54321 -g oinstall -G dba,oper oracle
+passwd oracle
+
+✅ Create Required Directories
+mkdir -p /u01/app/oracle/product/19c/db_1
+mkdir -p /u02/oracle/oradata
+mkdir -p /u02/oracle/FRA
+mkdir -p /backup/patch
+chown -R oracle:oinstall /u01 /u02 /backup
+chmod -R 750 /u01 /u02 /backup
+
+✅ Configure Oracle Environment Variables
+su - oracle
+vi ~/.bash_profile
+(Add below:)
+export TMP=/tmp
+export TMPDIR=$TMP
+export ORACLE_HOSTNAME=your-hostname
+export ORACLE_UNQNAME=cdb1
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/19c/db_1
+export ORACLE_SID=orcl
+export ORACLE_TERM=xterm
+export BASE_PATH=/usr/sbin:$PATH
+export PATH=$ORACLE_HOME/bin:$BASE_PATH
+export PATH=$ORACLE_HOME/OPatch:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CLASSPATH=$ORACLE_HOME/JRE:$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib
+
+Reload:
+. ~/.bash_profile
+
+
+## 2️⃣ Download, Installation & DB Creation
+
+✅ Download Oracle 19c
+cd $ORACLE_HOME
+wget -O LINUX.X64_193000_db_home.zip "https://download.oracle.com/otn/linux/oracle19c/190000/LINUX.X64_193000_db_home.zip?AuthParam=..."
+unzip LINUX.X64_193000_db_home.zip -d $ORACLE_HOME
+
+✅ Install X11 for GUI Installer
+sudo yum install -y xorg-x11-xauth xclock xterm
+
+✅ Set Compatibility Variable
+export CV_ASSUME_DISTID=OL8
+(Add to ~/.bash_profile for persistence)
+
+✅ Start Oracle 19c GUI Installer
+cd $ORACLE_HOME
+./runInstaller
+
+✅ (Optional) Apply Patch During Install
+./runInstaller -applyRU /backup/patch/35943157
+
+✅ Follow GUI steps for:
+- Configure Oracle Base & Home
+- Select Enterprise Edition
+- Create Database during install (or manual post-install)
+- Use standard settings for initial test environment
+
+## 3️⃣ Post-Installation Verification Checklist
+
+✅ Run root scripts when prompted
+sudo /u01/app/oraInventory/orainstRoot.sh
+sudo /u01/app/oracle/product/19c/db_1/root.sh
+
+✅ Verify Oracle Services
+ps -ef | grep pmon
+lsnrctl status
+
+✅ Check Database
+sqlplus / as sysdba
+SELECT name, open_mode FROM v$database;
+
+✅ Enable DB Autostart (optional)
+su - oracle
+lsnrctl start
+sqlplus / as sysdba
+startup
+
+✅ Verify Environment
+echo $ORACLE_HOME
+echo $ORACLE_SID
+
+✅ Clean Up
+Remove installer files and unnecessary archives if needed to save space.
+
+
+
